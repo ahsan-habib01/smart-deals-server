@@ -2,13 +2,42 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+var admin = require('firebase-admin');
 const app = express();
 const port = process.env.PORT || 3000;
+
+var serviceAccount = require('./smart-deals-firebase-admin-key.json');
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 
 //middleware
 app.use(cors());
 app.use(express.json());
 
+const logger = (req, res, next) => {
+  console.log('logging information');
+  next();
+};
+
+const verifyFirebaseToken = async (req, res, next) => {
+  if (!req.headers.authorization) {
+    return res.status(401).send({ message: 'unauthorized access' });
+  }
+  const token = req.headers.authorization.split(' ')[1];
+  if (!token) {
+    return res.status(401).send({ message: 'unauthorized access' });
+  }
+
+  // verify token
+  try {
+    const userInfo = await admin.auth().verifyIdToken(token);
+    console.log('after token validation', userInfo);
+    next();
+  } catch {
+    return res.status(401).send({ message: 'unauthorized access' });
+  }
+};
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.gz7uf4p.mongodb.net/?appName=Cluster0`;
 
@@ -118,7 +147,8 @@ async function run() {
     });
 
     //? bids related apis
-    app.get('/bids', async (req, res) => {
+    app.get('/bids', logger, verifyFirebaseToken, async (req, res) => {
+      // console.log('headers', req.headers);
       const email = req.query.email;
       const query = {};
       if (email) {
@@ -139,16 +169,16 @@ async function run() {
     });
 
     //
-    app.get('/bids', async (req, res) => {
-      const query = {};
-      if (query.email) {
-        query.buyer_email = email;
-      }
+    // app.get('/bids', async (req, res) => {
+    //   const query = {};
+    //   if (query.email) {
+    //     query.buyer_email = email;
+    //   }
 
-      const cursor = bidsCollection.find(query);
-      const result = await cursor.toArray();
-      res.send(result);
-    });
+    //   const cursor = bidsCollection.find(query);
+    //   const result = await cursor.toArray();
+    //   res.send(result);
+    // });
 
     app.post('/bids', async (req, res) => {
       const newBid = req.body;
